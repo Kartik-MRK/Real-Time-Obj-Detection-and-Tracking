@@ -1,0 +1,27 @@
+detection:
+  model_path: models/yolov8n.pt
+  confidence_threshold: 0.4
+  iou_threshold: 0.45
+  device: auto
+  classes_to_track: []
+
+tracking:
+  tracker: bytetrack
+  max_disappeared: 30
+
+camera:
+  source: 0
+  width: 1280
+  height: 720
+  fps_target: 30
+
+display:
+  show_fps: true
+  show_labels: true
+  show_confidence: true
+  show_track_id: true
+  bbox_thickness: 2
+
+output:
+  save_video: false
+  output_path: output/tracked_output.mp4

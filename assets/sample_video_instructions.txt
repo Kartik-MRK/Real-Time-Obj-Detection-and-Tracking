@@ -1,0 +1,8 @@
+Sample Video Instructions
+
+1. Place a sample video file in this project (recommended location: assets/sample_videos/).
+2. Supported formats include .mp4, .avi, and .mov.
+3. Run video mode:
+   python run_on_video.py assets/sample_videos/demo.mp4
+4. If your VM cannot access webcam hardware, always prefer video-file demo mode.
+5. For stable CPU performance, use 720p or lower resolution clips.
