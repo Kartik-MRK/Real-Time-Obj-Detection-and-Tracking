@@ -23,16 +23,59 @@ class Visualizer:
         self.show_track_id = bool(display_config.get("show_track_id", True))
         self.bbox_thickness = int(display_config.get("bbox_thickness", 2))
 
-        self.box_annotator = sv.BoundingBoxAnnotator(thickness=self.bbox_thickness)
-        self.label_annotator = sv.LabelAnnotator(
-            text_scale=0.5,
-            text_thickness=1,
-            text_padding=6,
+        box_annotator_class = self._resolve_supervision_class(
+            ["BoundingBoxAnnotator", "BoxAnnotator"]
         )
-        self.trace_annotator = sv.TraceAnnotator(thickness=max(1, self.bbox_thickness - 1))
+        label_annotator_class = self._resolve_supervision_class(["LabelAnnotator"])
+        trace_annotator_class = self._resolve_supervision_class(["TraceAnnotator"])
+
+        if box_annotator_class is None:
+            raise RuntimeError(
+                "No compatible bounding box annotator found in supervision package. "
+                "Install/upgrade with: pip install -U supervision"
+            )
+
+        self.box_annotator = box_annotator_class(thickness=self.bbox_thickness)
+        self.label_annotator = (
+            label_annotator_class(
+                text_scale=0.5,
+                text_thickness=1,
+                text_padding=6,
+            )
+            if label_annotator_class is not None
+            else None
+        )
+        self.trace_annotator = (
+            trace_annotator_class(thickness=max(1, self.bbox_thickness - 1))
+            if trace_annotator_class is not None
+            else None
+        )
+
+        if self.label_annotator is None:
+            log_message(
+                "INFO",
+                "LabelAnnotator not available in installed supervision version. "
+                "Continuing without label-annotator pass.",
+            )
+
+        if self.trace_annotator is None:
+            log_message(
+                "INFO",
+                "TraceAnnotator not available in installed supervision version. "
+                "Continuing without trajectory traces.",
+            )
 
         self.current_fps = 0.0
         self.current_total_unique = 0
+
+    @staticmethod
+    def _resolve_supervision_class(class_names: List[str]) -> Any:
+        """Return the first matching supervision class from a list of class names."""
+        for class_name in class_names:
+            resolved = getattr(sv, class_name, None)
+            if resolved is not None:
+                return resolved
+        return None
 
     def set_runtime_metrics(self, fps: float, total_unique_objects: int) -> None:
         """Update runtime metrics shown in the top-left overlay."""
@@ -46,14 +89,16 @@ class Visualizer:
         if tracked_objects:
             try:
                 detections = self._build_supervision_detections(tracked_objects)
-                annotated = self.trace_annotator.annotate(scene=annotated, detections=detections)
+                if self.trace_annotator is not None:
+                    annotated = self.trace_annotator.annotate(scene=annotated, detections=detections)
                 annotated = self.box_annotator.annotate(scene=annotated, detections=detections)
                 labels = self._build_labels(tracked_objects)
-                annotated = self.label_annotator.annotate(
-                    scene=annotated,
-                    detections=detections,
-                    labels=labels,
-                )
+                if self.label_annotator is not None:
+                    annotated = self.label_annotator.annotate(
+                        scene=annotated,
+                        detections=detections,
+                        labels=labels,
+                    )
             except Exception as exc:
                 log_message("ERROR", f"Visualizer annotation failed: {exc}")
 
@@ -67,12 +112,20 @@ class Visualizer:
         class_id = np.array([obj["class_id"] for obj in tracked_objects], dtype=np.int32)
         tracker_id = np.array([obj.get("track_id", -1) for obj in tracked_objects], dtype=np.int32)
 
-        return sv.Detections(
-            xyxy=xyxy,
-            confidence=confidence,
-            class_id=class_id,
-            tracker_id=tracker_id,
-        )
+        try:
+            return sv.Detections(
+                xyxy=xyxy,
+                confidence=confidence,
+                class_id=class_id,
+                tracker_id=tracker_id,
+            )
+        except TypeError:
+            # Some supervision versions do not support tracker_id in the constructor.
+            return sv.Detections(
+                xyxy=xyxy,
+                confidence=confidence,
+                class_id=class_id,
+            )
 
     def _build_labels(self, tracked_objects: List[Dict[str, Any]]) -> List[str]:
         """Compose display labels according to config flags for each tracked object."""
